@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- `facts.py` detects git repositories with `git rev-parse --show-toplevel` and scopes git stats to the target folder when run on a subdirectory (#2).
+
 ## [1.1.0] - 2026-11-07
 
 Found by running the pack on itself: the self-roast's top finding was that 1.0.1 broke its
