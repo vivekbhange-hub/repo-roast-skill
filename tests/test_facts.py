@@ -188,6 +188,22 @@ class GitTests(FactsCase):
         # node_modules was committed; it is counted, not scanned
         self.assertGreaterEqual(f["files"]["tracked_dependency_files"], 1)
 
+    def test_git_stats_on_subfolder(self):
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "Initial commit")
+        self.write("web/app.test.ts", "it('still works', () => {})\n")
+        self.git("commit", "-q", "-am", "Update web test")
+        self.write("app/main.py", "changed\n")
+        self.git("commit", "-q", "-am", "Update app main")
+        f = facts.gather(self.repo / "app")
+        self.assertEqual(f["repo"], "app")
+        self.assertTrue(f["is_git_repo"])
+        g = f["git"]
+        self.assertEqual(g["commits"], 2)
+        self.assertEqual(g["contributors"], 1)
+        self.assertEqual(g["churn_hotspots"][0]["path"], "main.py")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -102,10 +102,11 @@ def run_git(repo: Path, *args: str) -> str | None:
 
 def list_files(repo: Path) -> tuple[list[str], int, bool]:
     """Return (relative posix paths, tracked dependency files skipped, is_git)."""
-    out = run_git(repo, "ls-files", "-z")
+    top = run_git(repo, "rev-parse", "--show-toplevel")
+    out = run_git(repo, "ls-files", "-z") if top is not None else None
     skipped_deps = 0
     files: list[str] = []
-    if out is not None and (repo / ".git").exists():
+    if out is not None:
         for rel in out.split("\0"):
             if not rel:
                 continue
@@ -246,27 +247,29 @@ def dependency_facts(repo: Path, files: list[str]) -> dict:
 
 
 def git_facts(repo: Path) -> dict | None:
-    if not (repo / ".git").exists():
+    if run_git(repo, "rev-parse", "--show-toplevel") is None:
         return None
-    count = run_git(repo, "rev-list", "--count", "HEAD")
-    if count is None:
+    if run_git(repo, "rev-list", "--count", "HEAD") is None:
         return {"commits": 0, "note": "repository has no commits yet"}
-    facts: dict = {"commits": int(count.strip() or 0)}
-    shortlog = run_git(repo, "shortlog", "-sn", "HEAD") or ""
+    count = run_git(repo, "rev-list", "--count", "HEAD", "--", ".")
+    facts: dict = {"commits": int((count or "0").strip() or 0)}
+    shortlog = run_git(repo, "shortlog", "-sn", "HEAD", "--", ".") or ""
     facts["contributors"] = len([ln for ln in shortlog.splitlines() if ln.strip()])
-    roots = (run_git(repo, "rev-list", "--max-parents=0", "HEAD") or "").split()
-    if roots:
-        facts["first_commit"] = (run_git(repo, "log", "-1", "--format=%cs", roots[-1]) or "").strip()
-    facts["last_commit"] = (run_git(repo, "log", "-1", "--format=%cs") or "").strip()
-    recent = run_git(repo, "rev-list", "--count", "--since=90.days", "HEAD")
+    first_dates = (run_git(repo, "log", "--reverse", "--format=%cs", "HEAD", "--", ".") or "").splitlines()
+    if first_dates:
+        facts["first_commit"] = first_dates[0].strip()
+    facts["last_commit"] = (run_git(repo, "log", "-1", "--format=%cs", "HEAD", "--", ".") or "").strip()
+    recent = run_git(repo, "rev-list", "--count", "--since=90.days", "HEAD", "--", ".")
     facts["commits_last_90_days"] = int((recent or "0").strip() or 0)
-    subjects = (run_git(repo, "log", "-n", "200", "--format=%s") or "").splitlines()
+    subjects = (run_git(repo, "log", "-n", "200", "--format=%s", "HEAD", "--", ".") or "").splitlines()
     lazy = [s for s in subjects if LAZY_MESSAGE.match(s.strip()) or len(s.strip()) < 4]
     facts["lazy_commit_messages"] = {"count": len(lazy), "of_last": len(subjects),
                                      "examples": sorted(set(lazy))[:5]}
-    churn = Counter(f for f in (run_git(repo, "log", "-n", "500", "--format=", "--name-only") or "").splitlines() if f)
+    churn = Counter(
+        f for f in (run_git(repo, "log", "-n", "500", "--format=", "--name-only", "--relative", "HEAD", "--", ".") or "").splitlines() if f
+    )
     facts["churn_hotspots"] = [{"path": p, "changes": n} for p, n in churn.most_common(10)]
-    status = run_git(repo, "status", "--porcelain") or ""
+    status = run_git(repo, "status", "--porcelain", "--", ".") or ""
     facts["uncommitted_changes"] = len([ln for ln in status.splitlines() if ln.strip()])
     return facts
 
