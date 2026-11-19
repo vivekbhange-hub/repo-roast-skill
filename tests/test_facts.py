@@ -77,6 +77,29 @@ class GatherTests(FactsCase):
         self.assertEqual(t["test_files"], 2)
         self.assertEqual(t["source_files_excluding_tests"], 3)
 
+    def test_test_helpers_do_not_inflate_count(self):
+        for rel in ["tests/_load.py", "tests/conftest.py", "tests/fixtures.py",
+                    "__tests__/helper.ts", "spec/support/helper.rb"]:
+            self.write(rel, "# helper only\n")
+        t = facts.gather(self.repo)["tests"]
+        self.assertEqual(t["test_files"], 2)
+        self.assertEqual(t["source_files_excluding_tests"], 8)
+
+    def test_unconventional_test_declarations(self):
+        cases = {
+            "tests/checks.py": "async def test_smoke():\n    raise RuntimeError('never execute')\n",
+            "tests/checks.go": "func TestSmoke(t *testing.T) {}\n",
+            "tests/checks.rs": "#[test]\nfn smoke() {}\n",
+            "spec/checks.rb": "def test_smoke\nend\n",
+        }
+        for rel, text in cases.items():
+            self.write(rel, text)
+        self.write("tests/helper.py", "def make_fixture(): pass\n# def test_fake(): pass\n")
+        self.write("app/checks.py", "def test_smoke(): pass\n")
+        self.assertEqual(facts.gather(self.repo)["tests"]["test_files"], 6)
+        self.assertFalse(facts.is_test_file("tests/helper.py", "x" * 64000 + "\ndef test_late(): pass"))
+        self.assertFalse(facts.is_test_file("tests/helper.txt", "def test_fake(): pass"))
+
     def test_ci_detected(self):
         ci = facts.gather(self.repo)["ci"]
         self.assertEqual(ci["files"], [".github/workflows/ci.yml"])
@@ -130,10 +153,12 @@ class GatherTests(FactsCase):
 
 class HelperTests(unittest.TestCase):
     def test_is_test_file(self):
-        for p in ["tests/a.py", "src/test_x.py", "pkg/x_test.go", "ui/a.spec.tsx", "spec/models/user_spec.rb",
+        for p in ["tests/test_a.py", "src/test_x.py", "pkg/x_test.go", "ui/a.spec.tsx", "spec/models/user_spec.rb",
                   "src/FooTest.java", "test.js", "tests.py", "lib/spec.ts"]:
             self.assertTrue(facts.is_test_file(p), p)
-        for p in ["src/app.py", "src/contest.py", "lib/testing_utils_impl.go", "latest.js", "attest.py"]:
+        for p in ["src/app.py", "src/contest.py", "lib/testing_utils_impl.go", "latest.js", "attest.py",
+                  "tests/_load.py", "tests/conftest.py", "tests/fixtures.py",
+                  "__tests__/helper.ts", "spec/support/helper.rb", "tests/a.py"]:
             self.assertFalse(facts.is_test_file(p), p)
 
     def test_requirements_parser(self):

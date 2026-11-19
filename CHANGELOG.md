@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Count test files by established filename conventions or bounded test-function inspection in test directories, excluding ordinary helpers.
+
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).

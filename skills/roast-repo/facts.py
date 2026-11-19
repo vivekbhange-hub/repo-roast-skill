@@ -49,7 +49,6 @@ TEST_NAME = re.compile(
     r"Tests?\.(java|kt|cs|swift)$|_spec\.rb$|_test\.exs?$|test\.php$|"
     r"^(test|tests|spec)\.(py|[cm]?[jt]sx?)$)"
 )
-TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "testing"}
 
 # A marker counts only when it opens a comment, so prose or a regex that mentions one does not.
 MARKER = re.compile(r"(?:#|//|/\*|<!--|^\s*\*|^\s*--)[ \t]*(TODO|FIXME|HACK|XXX)\b")
@@ -141,11 +140,26 @@ def read_text(path: Path) -> str | None:
     return data.decode("utf-8", errors="replace")
 
 
-def is_test_file(rel: str) -> bool:
+TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "testing"}
+MAX_TEST_INSPECT_CHARS = 64_000
+TEST_FUNCTIONS = {
+    "Python": re.compile(r"^\s*(?:async\s+)?def\s+test_\w+\s*\(", re.MULTILINE),
+    "Go": re.compile(r"^func\s+Test[A-Z0-9_]\w*\s*\(\s*\w+\s+\*testing\.T\s*\)", re.MULTILINE),
+    "Rust": re.compile(r"^\s*#\[test\]\s*(?:pub\s+)?fn\s+\w+\s*\(", re.MULTILINE),
+    "Ruby": re.compile(r"^\s*def\s+test_\w+\b", re.MULTILINE),
+}
+
+
+def is_test_file(rel: str, text: str = "") -> bool:
+    """Use established filenames, then bounded test declarations in test directories."""
     parts = rel.split("/")
-    if any(p.lower() in TEST_DIRS for p in parts[:-1]):
+    if TEST_NAME.search(parts[-1]):
         return True
-    return bool(TEST_NAME.search(parts[-1]))
+    if not any(p.lower() in TEST_DIRS for p in parts[:-1]):
+        return False
+    language = LANGUAGES.get(Path(parts[-1]).suffix.lower())
+    pattern = TEST_FUNCTIONS.get(language)
+    return bool(pattern and pattern.search(text[:MAX_TEST_INSPECT_CHARS]))
 
 
 def redact(line: str, start: int, end: int) -> str:
@@ -303,7 +317,7 @@ def gather(repo: Path) -> dict:
         if is_source:
             languages[LANGUAGES[ext]] += 1
             source_lines[rel] = lines
-            if is_test_file(rel):
+            if is_test_file(rel, text):
                 test_files.append(rel)
             for lineno, line in enumerate(text.splitlines(), 1):
                 for m in MARKER.finditer(line):
