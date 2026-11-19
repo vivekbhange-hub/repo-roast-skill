@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
+
+
+ARCHIVE_NAME = re.compile(r"roast-\d{4}-\d{2}-\d{2}(?:-\d+)?\.json")
 
 
 def load(path: str) -> dict:
@@ -25,6 +29,26 @@ def load(path: str) -> dict:
     if not isinstance(data, dict) or "judges" not in data:
         raise ValueError(f"{path} does not look like a roast.json (no 'judges')")
     return data
+
+
+def _archive_key(path: Path) -> tuple[str, int, str]:
+    match = re.fullmatch(r"roast-(\d{4}-\d{2}-\d{2})(?:-(\d+))?", path.stem)
+    if match:
+        return match.group(1), int(match.group(2) or 1), path.name
+    return "", 0, path.name
+
+
+def history_files(after_path: str) -> list[Path]:
+    history = Path(after_path).resolve().parent / "history"
+    return sorted((path for path in history.glob("*.json") if ARCHIVE_NAME.fullmatch(path.name)),
+                  key=_archive_key)
+
+
+def select_baseline(after_path: str, since_day_one: bool = False) -> Path:
+    files = history_files(after_path)
+    if not files:
+        raise FileNotFoundError(f"no archived roasts found beside {after_path}")
+    return files[0] if since_day_one else files[-1]
 
 
 def signed(d: float) -> str:
@@ -125,14 +149,19 @@ def card_payload(before: dict, after: dict) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Compare two roast.json files and report per-judge score deltas.")
-    p.add_argument("--before", required=True, help="previous roast.json (e.g. roast/history/roast-<date>.json)")
+    p.add_argument("--before", help="explicit previous roast.json; defaults to the latest archive")
+    p.add_argument("--since-day-one", action="store_true",
+                   help="compare against the oldest archived roast instead of the latest")
     p.add_argument("--after", required=True, help="new roast.json")
     p.add_argument("--out", help="write the markdown report here (default: stdout)")
     p.add_argument("--card-out", help="write a before/after card JSON for card.py here")
     p.add_argument("--json", action="store_true", help="print the comparison as JSON instead of markdown")
     args = p.parse_args(argv)
     try:
-        before, after = load(args.before), load(args.after)
+        if args.before and args.since_day_one:
+            raise ValueError("--before cannot be combined with --since-day-one")
+        before_path = Path(args.before) if args.before else select_baseline(args.after, args.since_day_one)
+        before, after = load(str(before_path)), load(args.after)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

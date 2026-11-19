@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- `roast-rematch` now compares with the latest archive by default and supports `--since-day-one`
+  for comparison with the first archived roast.
+
 ## [1.1.0] - 2026-11-07
 
 Found by running the pack on itself: the self-roast's top finding was that 1.0.1 broke its

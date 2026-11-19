@@ -79,6 +79,68 @@ class CardPayloadTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def test_same_date_suffixes_ignore_stray_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            history = root / "roast" / "history"
+            history.mkdir(parents=True)
+            for suffix, score in [("", 1.0), ("-2", 2.0), ("-3", 3.0)]:
+                value = roast(score, {"security": score}, date="2026-11-19")
+                (history / f"roast-2026-11-19{suffix}.json").write_text(json.dumps(value), encoding="utf-8")
+            (history / "notes.json").write_text("{}", encoding="utf-8")
+            after = root / "roast" / "roast.json"
+            after.write_text(json.dumps(roast(4.0, {"security": 4.0})), encoding="utf-8")
+
+            self.assertEqual(delta.select_baseline(str(after)).name, "roast-2026-11-19-3.json")
+            self.assertEqual(delta.select_baseline(str(after), since_day_one=True).name,
+                             "roast-2026-11-19.json")
+
+    def test_only_invalid_history_files_are_no_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            history = root / "roast" / "history"
+            history.mkdir(parents=True)
+            (history / "notes.json").write_text("{}", encoding="utf-8")
+            after = root / "roast" / "roast.json"
+            after.write_text(json.dumps(AFTER), encoding="utf-8")
+
+            with self.assertRaisesRegex(FileNotFoundError, "no archived roasts"):
+                delta.select_baseline(str(after))
+            self.assertEqual(delta.main(["--after", str(after)]), 2)
+
+    def test_conflicting_baseline_flags_are_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = root / "before.json"
+            after = root / "after.json"
+            before.write_text(json.dumps(BEFORE), encoding="utf-8")
+            after.write_text(json.dumps(AFTER), encoding="utf-8")
+            self.assertEqual(delta.main(["--before", str(before), "--after", str(after),
+                                         "--since-day-one"]), 2)
+
+    def test_three_round_history_selects_latest_or_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            history = root / "roast" / "history"
+            history.mkdir(parents=True)
+            rounds = [roast(1.0, {"security": 1.0}, date="2026-11-01"),
+                      roast(2.0, {"security": 2.0}, date="2026-11-02"),
+                      roast(3.0, {"security": 3.0}, date="2026-11-03")]
+            for index, value in enumerate(rounds, 1):
+                (history / f"roast-2026-11-0{index}.json").write_text(json.dumps(value), encoding="utf-8")
+            after = root / "roast" / "roast.json"
+            after.write_text(json.dumps(roast(4.0, {"security": 4.0}, date="2026-11-04")), encoding="utf-8")
+
+            self.assertEqual(delta.select_baseline(str(after)).name, "roast-2026-11-03.json")
+            self.assertEqual(delta.select_baseline(str(after), since_day_one=True).name,
+                             "roast-2026-11-01.json")
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(delta.main(["--after", str(after), "--json"]), 0)
+            self.assertEqual(json.loads(output.getvalue())["overall_before"], 3.0)
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(delta.main(["--after", str(after), "--since-day-one", "--json"]), 0)
+            self.assertEqual(json.loads(output.getvalue())["overall_before"], 1.0)
+
     def test_cli_writes_report_and_card(self):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)

@@ -6,7 +6,7 @@ description: >-
   "5.1 -> 6.8". Reads the previous roast from roast/history/ and the new one from roast/roast.json.
   Use when the user says "rematch", "roast it again", "re-roast after my fixes", "did my score go
   up", "show me before and after", "how much did the fixes help", or "make a before and after card".
-argument-hint: "[--gentle|--savage] [previous roast.json]"
+argument-hint: "[--gentle|--savage] [--since-day-one] [previous roast.json]"
 ---
 
 # roast-rematch: the comeback episode
@@ -17,8 +17,9 @@ measured, not claimed. The before and after card is the one people post.
 
 ## Inputs
 
-- The previous roast: the path the user gives, else the newest file in `roast/history/`, else the
-  current `roast/roast.json` (which will be archived when the new roast is written).
+- The previous roast: the path the user gives, else the newest file in `roast/history/`. The
+  `--since-day-one` option selects the oldest archive instead. If there is no archive, use the
+  current `roast/roast.json` only when it will be archived before the new roast is written.
 - Mode flag: use the previous roast's `mode` unless the user asks for another. Changing tone
   between rounds is fine; changing the rubric is not.
 
@@ -31,7 +32,9 @@ measured, not claimed. The before and after card is the one people post.
 
 ## Steps
 
-1. **Find the baseline.** Locate the previous roast as above. Read its `date`, `mode`, `overall`
+1. **Find the baseline.** Locate the previous roast as above. Ordinary rematches use the most
+   recent archived `roast.json`. Use `--since-day-one` when the user asks for progress since the
+   first roast. Read its `date`, `mode`, `overall`
    and per-judge scores. If there is no previous roast, say a rematch needs a first match and run
    `roast-repo` instead.
 
