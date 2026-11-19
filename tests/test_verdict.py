@@ -30,6 +30,8 @@ class RepoCase(unittest.TestCase):
         (self.repo / "app.py").write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
         (self.repo / "src").mkdir()
         (self.repo / "src" / "db.py").write_text("x\n" * 50, encoding="utf-8")
+        (self.repo / "docs").mkdir()
+        (self.repo / "docs" / "My Guide.md").write_text("x\n" * 12, encoding="utf-8")
         self.bailiff = verdict.Bailiff(self.repo, {"ci": {"files": []}, "tests": {"test_files": 0}})
 
     def tearDown(self):
@@ -42,6 +44,12 @@ class BailiffTests(RepoCase):
         self.assertIsNone(self.bailiff.check("src/db.py:10-20"))
         self.assertIsNone(self.bailiff.check("`src/db.py:50` builds SQL"))
         self.assertIsNone(self.bailiff.check("./app.py:1"))
+
+    def test_accepts_backtick_path_with_spaces(self):
+        self.assertIsNone(self.bailiff.check("See `docs/My Guide.md:12` for details"))
+        self.assertIsNone(self.bailiff.check("See `docs/My Guide.md:2-4` for details"))
+        self.assertIn("out of range", self.bailiff.check("See `docs/My Guide.md:13` for details"))
+
 
     def test_rejects_missing_file(self):
         self.assertIn("not found", self.bailiff.check("nope.py:1"))

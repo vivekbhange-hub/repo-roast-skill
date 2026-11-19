@@ -48,6 +48,7 @@ DEFAULT_HEADLINES = {
 }
 
 LOCATION = re.compile(r"(?<![\w/\\.-])([\w.\-][\w.\-/\\]*?):(\d+)(?:-(\d+))?\b")
+BACKTICK_LOCATION = re.compile(r"^(.+):(\d+)(?:-(\d+))?$")
 
 
 def tier(score: float) -> str:
@@ -108,22 +109,44 @@ class Bailiff:
             if self.facts is None:
                 return None
             return None if lookup_fact(self.facts, key) else f"facts key '{key}' does not exist"
-        matches = list(LOCATION.finditer(ev.replace("`", " ")))
+        masked = list(ev)
+        backtick_found = False
+        for code in re.finditer(r"`([^`\r\n]+)`", ev):
+            citation = BACKTICK_LOCATION.fullmatch(code.group(1).strip())
+            if citation:
+                backtick_found = True
+                rel = citation.group(1).replace("\\", "/")
+                line = int(citation.group(2))
+                end = int(citation.group(3)) if citation.group(3) else line
+                reason = self._check_location(rel, line, end)
+                if reason:
+                    return reason
+                for index in range(code.start(), code.end()):
+                    masked[index] = " "
+        matches = list(LOCATION.finditer("".join(masked)))
         if not matches:
-            return "evidence must be path:line, '$ command -> output' or 'facts.<key>'"
-        if self.repo is None:
-            return None
+            return None if backtick_found else "evidence must be path:line, '$ command -> output' or 'facts.<key>'"
         for m in matches:
             rel = m.group(1).replace("\\", "/")
             while rel.startswith("./"):
                 rel = rel[2:]
             line = int(m.group(2))
             end = int(m.group(3)) if m.group(3) else line
-            total = self._count_lines(rel)
-            if total is None:
-                return f"file '{rel}' not found in the repo"
-            if line < 1 or end > total or end < line:
-                return f"'{rel}' has {total} lines; line {line if end == line else f'{line}-{end}'} is out of range"
+            reason = self._check_location(rel, line, end)
+            if reason:
+                return reason
+        return None
+
+    def _check_location(self, rel: str, line: int, end: int) -> str | None:
+        while rel.startswith("./"):
+            rel = rel[2:]
+        if self.repo is None:
+            return None
+        total = self._count_lines(rel)
+        if total is None:
+            return f"file '{rel}' not found in the repo"
+        if line < 1 or end > total or end < line:
+            return f"'{rel}' has {total} lines; line {line if end == line else f'{line}-{end}'} is out of range"
         return None
 
 
